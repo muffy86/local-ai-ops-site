@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Local AI Ops — find out why your local LLM is actually slow</title>
+<meta name="description" content="A diagnostic toolkit for local LLM inference. Measures how much of your model is really in VRAM, computes what fits before you download, and proves the fix with real tokens/sec.">
+<meta property="og:title" content="Local AI Ops — why your local LLM is actually slow">
+<meta property="og:description" content="Two dependency-free scripts that measure GPU offload and model fit instead of guessing. Find the 20x slowdown that reports no error.">
+<meta property="og:type" content="product">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Product",
+  "name": "Local AI Ops",
+  "description": "Diagnostic toolkit for local LLM inference on workstation GPUs: VRAM offload measurement, GGUF model-fit computation, and a real tokens/sec benchmark.",
+  "brand": {"@type": "Brand", "name": "muffy86"},
+  "offers": {
+    "@type": "Offer",
+    "price": "19.00",
+    "priceCurrency": "USD",
+    "availability": "https://schema.org/InStock"
+  }
+}
+</script>
+<style>
+  :root{
+    --bg:#0a0b0d; --panel:#111318; --panel2:#161920; --line:#23262f;
+    --fg:#e8eaed; --dim:#9aa0ab; --faint:#6b7280;
+    --accent:#7ee787; --warn:#ffa657; --bad:#ff7b72; --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0; background:var(--bg); color:var(--fg);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    line-height:1.65; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:880px; margin:0 auto; padding:0 24px}
+  a{color:var(--accent)}
+  code,.mono{font-family:var(--mono); font-size:.9em}
+  h1,h2,h3{line-height:1.2; letter-spacing:-.02em; margin:0}
+  h1{font-size:clamp(2rem,5vw,3.1rem); font-weight:700}
+  h2{font-size:clamp(1.35rem,3vw,1.9rem); font-weight:650; margin-bottom:14px}
+  h3{font-size:1.02rem; font-weight:650; margin-bottom:6px}
+  p{margin:0 0 16px}
+  .dim{color:var(--dim)}
+  .faint{color:var(--faint); font-size:.88rem}
+
+  header{border-bottom:1px solid var(--line); padding:18px 0}
+  .brand{font-family:var(--mono); font-size:.86rem; letter-spacing:.14em; text-transform:uppercase; color:var(--dim)}
+  .brand b{color:var(--accent); font-weight:600}
+
+  section{padding:64px 0; border-bottom:1px solid var(--line)}
+  .hero{padding:76px 0 60px}
+  .kicker{font-family:var(--mono); font-size:.78rem; letter-spacing:.16em; text-transform:uppercase; color:var(--accent); margin-bottom:18px}
+  .lede{font-size:1.12rem; color:var(--dim); max-width:640px; margin-top:20px}
+
+  pre{
+    background:var(--panel); border:1px solid var(--line); border-radius:10px;
+    padding:18px 20px; overflow-x:auto; font-family:var(--mono); font-size:.82rem;
+    line-height:1.7; margin:22px 0; color:var(--dim);
+  }
+  pre .k{color:#79c0ff} pre .ok{color:var(--accent)} pre .wr{color:var(--warn)} pre .bd{color:var(--bad)}
+  pre .c{color:var(--faint)}
+
+  .grid{display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:26px}
+  .card{background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:20px}
+  .card p{color:var(--dim); font-size:.94rem; margin:0}
+  .card .tag{font-family:var(--mono); font-size:.74rem; color:var(--faint); letter-spacing:.08em; text-transform:uppercase}
+
+  table{width:100%; border-collapse:collapse; margin:22px 0; font-size:.92rem}
+  th,td{text-align:left; padding:11px 12px; border-bottom:1px solid var(--line); vertical-align:top}
+  th{color:var(--faint); font-family:var(--mono); font-size:.74rem; letter-spacing:.08em; text-transform:uppercase; font-weight:500}
+  td.d{color:var(--dim)}
+
+  .buy{
+    background:var(--panel2); border:1px solid var(--line); border-radius:14px;
+    padding:32px; margin-top:8px; display:flex; flex-wrap:wrap; gap:24px;
+    align-items:center; justify-content:space-between;
+  }
+  .price{font-size:2.4rem; font-weight:700; letter-spacing:-.03em}
+  .price span{font-size:.9rem; color:var(--faint); font-weight:400; letter-spacing:0}
+  .btn{
+    display:inline-block; background:var(--accent); color:#05230b; text-decoration:none;
+    font-weight:700; padding:14px 26px; border-radius:9px; font-size:1rem;
+    border:1px solid transparent; transition:transform .12s ease, opacity .12s ease;
+  }
+  .btn:hover{transform:translateY(-1px); opacity:.92}
+  .btn.ghost{background:transparent; color:var(--fg); border-color:var(--line); font-weight:500}
+
+  ul{color:var(--dim); padding-left:20px; margin:0 0 16px}
+  li{margin-bottom:7px}
+  li code{color:var(--fg)}
+  blockquote{
+    margin:0; padding:14px 18px; border-left:3px solid var(--accent);
+    background:var(--panel); color:var(--dim); border-radius:0 8px 8px 0; font-size:.95rem;
+  }
+  details{border-bottom:1px solid var(--line); padding:15px 0}
+  summary{cursor:pointer; font-weight:600; font-size:.98rem}
+  details p{margin:10px 0 0; color:var(--dim); font-size:.94rem}
+  footer{padding:36px 0 60px; color:var(--faint); font-size:.85rem}
+  @media(max-width:640px){ .grid{grid-template-columns:1fr} .buy{flex-direction:column; align-items:flex-start} }
+</style>
+</head>
+<body>
+
+<header><div class="wrap"><div class="brand">local<b>·</b>ai<b>·</b>ops</div></div></header>
+
+<main>
+
+<section class="hero"><div class="wrap">
+  <div class="kicker">Diagnostic toolkit · local inference</div>
+  <h1>Your GPU isn't slow.<br>Your model isn't fitting.</h1>
+  <p class="lede">
+    When an LLM spills out of VRAM, throughput drops 20–40× and
+    <strong>nothing reports an error</strong>. The server returns <code>200 OK</code>, the logs are clean,
+    the fans are quiet. This toolkit measures the one number that explains it.
+  </p>
+
+<pre><span class="c">$ python scripts/ollama-doctor.py --bench</span>
+<span class="ok">[ ok ]</span> server: responding at http://127.0.0.1:11434, version 0.40.1
+<span class="ok">[ ok ]</span> context env: OLLAMA_CONTEXT_LENGTH=32768
+<span class="ok">[ ok ]</span> launch path: ollama.exe running with `serve`
+<span class="wr">[warn]</span> offload qwen3.6:latest: only 58% in VRAM (13.0 of 22.6 GB)
+<span class="bd">[fail]</span> bench: qwen3.6:latest: <span class="bd">0.5 tok/s</span> (32 tokens)</pre>
+
+  <p class="faint">Real output from a 16 GB workstation. Same model, same card, had previously
+  been measured at ~21 tok/s — the only difference was how much VRAM was free when it loaded.</p>
+</div></section>
+
+<section><div class="wrap">
+  <h2>Two numbers make every slow model explainable</h2>
+  <p class="dim">
+    Almost every "my hardware can't handle this" is a configuration fault, and it reduces to
+    fit and context. Once you can see both, the fix is usually free.
+  </p>
+
+  <table>
+    <tr><th>Offload</th><th>What it means</th></tr>
+    <tr><td class="mono">99–100%</td><td class="d">Fully resident. If it's still slow, look at power limits, PCIe width, or thermals — not the model.</td></tr>
+    <tr><td class="mono">50–99%</td><td class="d">Partial offload. This is the 20× slowdown zone, and the most common single cause of a "broken" setup.</td></tr>
+    <tr><td class="mono">&lt; 50%</td><td class="d">Effectively CPU inference. A bigger GPU helps, but fixing the fit is free and helps more.</td></tr>
+  </table>
+
+  <p class="dim">
+    Fixes in order of cost: reduce context length (the KV cache is often the hidden consumer),
+    drop one quant tier, quantise the KV cache, or accept the offload and expect ~1 tok/s.
+  </p>
+</div></section>
+
+<section><div class="wrap">
+  <h2>What's inside</h2>
+  <div class="grid">
+    <div class="card">
+      <div class="tag">SKILL.md</div>
+      <h3>The procedure</h3>
+      <p>The diagnostic order an agent follows, why each check invalidates the ones below it, and how to prove a fix actually landed.</p>
+    </div>
+    <div class="card">
+      <div class="tag">scripts/ollama-doctor.py</div>
+      <h3>8 live checks + real benchmark</h3>
+      <p>Server, context env, persisted context, launch path, port ownership, PCIe link, offload percentage, and measured tokens/sec.</p>
+    </div>
+    <div class="card">
+      <div class="tag">scripts/vram-fit.py</div>
+      <h3>Know before you download</h3>
+      <p>Reads real <code>.gguf</code> byte sizes from Hugging Face and computes the KV cache from the model's own attention geometry.</p>
+    </div>
+    <div class="card">
+      <div class="tag">references/windows-traps.md</div>
+      <h3>Seven silent failure modes</h3>
+      <p>The tray-app environment drop, stale port owners, marketing VRAM, negotiated PCIe width, session-0 GUI isolation, and more.</p>
+    </div>
+  </div>
+</div></section>
+
+<section><div class="wrap">
+  <h2>Why the numbers hold up</h2>
+  <ul>
+    <li><strong>Weights</strong> come from the actual file size in the Hugging Face listing — not <code>params × bits / 8</code>, which ignores metadata, padding, and per-tensor quantisation differences.</li>
+    <li><strong>KV cache</strong> is computed from the model's real <code>config.json</code>: <code>layers × kv_heads × head_dim</code>. No rule of thumb.</li>
+    <li><strong>Throughput</strong> is measured on your machine, reported next to the offload percentage so the figure means something.</li>
+    <li><strong>Verified:</strong> predicted 4.683 GB of weights for a 7B at Q4_K_M; the real file is 4.683 GB.</li>
+  </ul>
+  <blockquote>
+    Python 3.8+. No <code>pip install</code>. No API keys. No telemetry. Read-only — it changes
+    nothing on your system and reports only what it measured.
+  </blockquote>
+</div></section>
+
+<section><div class="wrap">
+  <h2>Get it</h2>
+  <div class="buy">
+    <div>
+      <div class="price">$19 <span>one-time · lifetime updates</span></div>
+      <p class="faint" style="margin:8px 0 0">Commercial licence. Works with Ollama, llama.cpp, LM Studio, vLLM.</p>
+    </div>
+    <a class="btn" id="checkout" href="#">Buy — $19</a>
+  </div>
+</div></section>
+
+<section><div class="wrap">
+  <h2>Questions</h2>
+  <details><summary>Will this make my model faster automatically?</summary>
+    <p>No, and be suspicious of anything that claims to. It measures and reports. Most of the time the report itself is the fix — for example discovering your context length is set higher than your card can hold. It is read-only by design.</p></details>
+  <details><summary>Does it work on AMD or Apple Silicon?</summary>
+    <p>The Ollama checks work anywhere the API is reachable. The GPU row uses <code>nvidia-smi</code> and reports "not found" elsewhere, which is a normal result, not a failure. <code>vram-fit.py</code> is fully hardware-independent — it computes model requirements.</p></details>
+  <details><summary>Is there a refund policy?</summary>
+    <p>Yes. If it doesn't identify a real issue on your machine, say so and get your money back. It's a $19 diagnostic, not a subscription.</p></details>
+  <details><summary>Why not just use a VRAM calculator website?</summary>
+    <p>A calculator tells you what a model needs in theory. This reads what your model actually is, and what your machine is actually doing right now. The gap between those two is where most of the confusion lives.</p></details>
+</div></section>
+
+</main>
+
+<footer><div class="wrap">
+  Local AI Ops · built and tested against a live RTX 4080 SUPER workstation.
+  Measurements in the example above are real output, not mockups.
+</div></footer>
+
+<script>
+  // Set this to your marketplace or checkout URL (mdskills.ai, Gumroad, Lemon Squeezy).
+  // While empty, the button opens a prefilled order email so the product can be
+  // bought with zero payment infrastructure in place.
+  const CHECKOUT_URL = "";
+
+  const btn = document.getElementById('checkout');
+  if (CHECKOUT_URL) {
+    btn.href = CHECKOUT_URL;
+  } else {
+    const subject = encodeURIComponent('Local AI Ops — order ($19)');
+    const body = encodeURIComponent(
+      'Hi,\n\nI would like to buy Local AI Ops ($19).\n\n' +
+      'Payment method (reply with preference): \n' +
+      'Machine / GPU: \n\nThanks'
+    );
+    btn.href = `mailto:?subject=${subject}&body=${body}`;
+    btn.title = 'Checkout link not configured yet — this opens a prefilled order email';
+  }
+</script>
+</body>
+</html>
